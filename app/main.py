@@ -20,6 +20,16 @@ app = FastAPI(
     description="API para acesso a dados de projetos ESOL via Google Sheets",
     version="1.0.0",
     debug=settings.DEBUG,
+    servers=[
+        {
+            "url": "https://esol-pbi-api.onrender.com",
+            "description": "Production API (Render)"
+        },
+        {
+            "url": "http://localhost:8000",
+            "description": "Local development"
+        }
+    ]
 )
 
 # CORS Configuration
