@@ -330,7 +330,7 @@ def buscar_projeto(
 # 📋 LISTAR PROJETOS COM FILTROS
 @router.get(
     "/projetos",
-    response_model=List[ProjectResponse],
+    response_model=List[Dict[str, Any]],
     summary="List Projects",
     description="Lista todos os projetos com filtros opcionais por status e vendedor.",
     tags=["Projects"],
