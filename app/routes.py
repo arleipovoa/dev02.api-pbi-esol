@@ -18,6 +18,7 @@ from app.logger import logger
 from app.models import (
     HealthCheckResponse,
     ProjectResponse,
+    ProjectsListResponse,
     SummaryResponse,
     CacheRefreshResponse,
     CacheInfo,
@@ -280,7 +281,7 @@ def atualizar_cache(
 # 🔎 BUSCAR PROJETO POR NÚMERO
 @router.get(
     "/projeto/{numero}",
-    response_model=dict[str, Any],
+    response_model=ProjectResponse,
     summary="Get Project",
     description="Busca um projeto específico pelo seu número/ID.",
     tags=["Projects"],
@@ -327,7 +328,7 @@ def buscar_projeto(
 # 📋 LISTAR PROJETOS COM FILTROS
 @router.get(
     "/projetos",
-    response_model=List[dict[str, Any]],
+    response_model=ProjectsListResponse,
     summary="List Projects",
     description="Lista todos os projetos com filtros opcionais por status e vendedor.",
     tags=["Projects"],
