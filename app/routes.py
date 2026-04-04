@@ -2,7 +2,7 @@
 Rotas da API ESOL.
 Define todos os endpoints da aplicação.
 """
-from typing import Any, Optional, List
+from typing import Any, Optional, List, Dict
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request, Path
