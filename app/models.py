@@ -3,7 +3,7 @@ Pydantic models para validação e documentação de requisições/respostas.
 Melhora o esquema OpenAPI para integração com OpenAI Custom Actions.
 """
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, RootModel
 
 
 # ========================
@@ -56,10 +56,10 @@ class ProjectResponse(BaseModel):
         }
 
 
-class ProjectsListResponse(BaseModel):
+class ProjectsListResponse(RootModel):
     """Lista de projetos."""
 
-    __root__: List[Dict[str, Any]] = Field(
+    root: List[Dict[str, Any]] = Field(
         ...,
         description="Lista de projetos com todos os seus atributos"
     )
@@ -85,10 +85,10 @@ class ProjectsListResponse(BaseModel):
         }
 
 
-class SummaryByStatus(BaseModel):
+class SummaryByStatus(RootModel):
     """Contagem de projetos por status."""
 
-    __root__: Dict[str, int] = Field(
+    root: Dict[str, int] = Field(
         ...,
         description="Status como chave, contagem como valor"
     )
@@ -104,10 +104,10 @@ class SummaryByStatus(BaseModel):
         }
 
 
-class SummaryByVendor(BaseModel):
+class SummaryByVendor(RootModel):
     """Contagem de projetos por vendedor."""
 
-    __root__: Dict[str, int] = Field(
+    root: Dict[str, int] = Field(
         ...,
         description="Nome do vendedor como chave, contagem como valor"
     )
