@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "cobalt-academy-488306-m5",
+  "private_key_id": "bf0f66e2a7fdcf3e5b6678e61aa6cca20645c10f",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCcQeAR5bvsiTBW\nKx5Mvct2KPKmp0/kanXMUDD4H8/cmaBNX1y20IohphE+5ySmZGs3QiK/uYisG+eJ\nwP7X/w6tL1XbIfgB9b/6qF7pI68pfkWkJbEtlTuA2I6yVSrUf3j613SjHMuQjF7r\nmljEc/H4plO9gN2E0jQqeQExfyE+spHYyDc07krFE+OusJHWcR+YU/cg9g/YhsxK\nWAapArIyD8kczIamuFJb8YlJmlawNN2TzRN4rFjupKMOX4ChGRd2DJv9eNE3gPVz\nZjpQn5H1ixHzu/YHoBUvEEjyrKMHn2RswPJOSPmWv02wmrvr0HHG5o3TtERGe0AE\n8JYVO6KxAgMBAAECggEADtDYNBo6VVU0thbkipY8YnnDeDXJB3lorfS0j/JEPUB7\nyJpQKi1fy4z5eaNlADnpSJYGwXMQGHGU5KTeBRD0DUu9skdoQpdQmq24QhbWFvMY\nG1ZPlGjf+XmPHi2hIADuMaqYLpceXhhRL7m0zPvJZ7AtpHxBhMSBmb1bdZv+RPl3\nk7MGbNXBFXi3d4lLuOPBpyLinULMA8djzFu2Ey7HO0th5/Ii/1b0/oo6Pv1C5mLz\nRJJouyoLGy9pokLnZUuZ8imPz8U4+sFJLfnlEb3Y+pYyRrvKPkKK+5z9cqUH2Kme\n8OjMBhQzmLi3/DQxac7Xb9PMu7L5RU0+7/E0I1Fl2QKBgQDOzyGIakyCBVrUBuLD\nvPIIHO+e2OLJB2cI0Iyn16GoGdq2D/Y6+SI4igCIIO//CkHXhOEG/5Qg9AZHvTrF\nSHvWPkAfQhKszak4V89IbqKEp9YyWfwHS53pXUyFFSBuw92Odsyysm9BE8/krUVQ\n9Kcv2XBeTjDBxqug4ANCyfPnlwKBgQDBbJULktfrt1OtWSsGHsqK9mKK3aVPR6HM\ntt531DpMAdpkElsTq9ugzZtIIgMA5re2u2MjO0RJ4/BOOsrae6xdPeqP9R1wdu66\nv6zmsSxRGK2raBAlB8d0fChoVw9bKuVdOxgNOsfFqBUJEVVZ6OV6Vx97wdawN4eZ\nU+LborhQ9wKBgQClBCeIlvEHSkiIKBpm/uvMx3H3uK10pKB1KxsgjfFilYargR8D\nPWkt3gfAly+IvGF/G3sGv4YtqSkdswMjCcwuTiuSBYGrOssMtxwheo3Y9ab3NE/i\nblbJL3XwNsRTPZwaofaBm9kj/zACErPdfemtR33e8dr7s4+c5UIU19nzbwKBgCih\nraGTxEXg6fQFQjNz7mpInaS8MMi5rHR7ibo0W9axoPXaoUU9mdJqvo7ljin3TWpW\nbNnuzkaTWlyknw5MYoXnxslc3UVNxpJ2R1TirQOQIpNaNeIBg1Wl6zsX5sLo/Oub\nyU6mJWcRCvIvsPVFJkeP2648puO3loWQCJzIzt07AoGBAI2OaiqpipSm8HVsyvD6\nyQkfjhRsjhC7Smjm/0KeZvCO+YpotHLJO9MBeuQmTDNf7tSWilz9u1SQNMCbrxQj\n31gJ33PLL3e8J/381jfNdIUls5819YgH0c1KKttvXv/ZhGe0vN1gBb6l5WCxYc2F\nMA3De1A8LoiZyJZhtIvY3LGo\n-----END PRIVATE KEY-----\n",
+  "client_email": "esol-pbi-api@cobalt-academy-488306-m5.iam.gserviceaccount.com",
+  "client_id": "101548037818778926209",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/esol-pbi-api%40cobalt-academy-488306-m5.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
