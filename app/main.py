@@ -3,6 +3,7 @@ Aplicação FastAPI principal.
 Configura a aplicação com middleware, exception handlers e rotas.
 """
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
@@ -19,6 +20,26 @@ app = FastAPI(
     description="API para acesso a dados de projetos ESOL via Google Sheets",
     version="1.0.0",
     debug=settings.DEBUG,
+)
+
+# CORS Configuration
+# Necessário para OpenAI Custom Actions conseguir fazer requisições
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://chat.openai.com",  # OpenAI GPT Builder
+        "https://openai.com",       # OpenAI platform
+        "https://platform.openai.com",  # OpenAI platform
+        "http://localhost:3000",    # Local development
+        "http://localhost:8000",    # Local development
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "x-api-key",  # Custom header para API Key
+    ],
 )
 
 # Rate limiter global

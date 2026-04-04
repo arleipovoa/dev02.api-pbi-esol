@@ -2,7 +2,7 @@
 Rotas da API ESOL.
 Define todos os endpoints da aplicação.
 """
-from typing import Any, Optional
+from typing import Any, Optional, List
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request
@@ -15,6 +15,13 @@ from googleapiclient.discovery import build
 from app.config import settings
 from app.exceptions import ProjectNotFoundError, SheetsError
 from app.logger import logger
+from app.models import (
+    HealthCheckResponse,
+    ProjectResponse,
+    SummaryResponse,
+    CacheRefreshResponse,
+    CacheInfo,
+)
 from app.security import verify_jwt, verify_api_key
 
 router = APIRouter()
@@ -209,42 +216,101 @@ def auth(
 
 
 # ❤️ HEALTH CHECK
-@router.get("/health")
+@router.get(
+    "/health",
+    response_model=HealthCheckResponse,
+    summary="Health Check",
+    description="Verifica se a API está ativa e retorna informações sobre cache.",
+    tags=["Health"],
+    operation_id="healthCheck",
+)
 @limiter.limit("30/minute")
-def healthcheck(request: Request) -> dict[str, Any]:
-    """Verifica saúde da API."""
+def healthcheck(request: Request) -> HealthCheckResponse:
+    """
+    Verifica saúde da API.
+
+    Endpoint público (sem autenticação necessária) que retorna o status
+    da API e informações sobre o cache.
+
+    Returns:
+        HealthCheckResponse com status, TTL do cache e itens em cache
+    """
     logger.info("Health check realizado")
-    return {
-        "status": "ok",
-        "cache_ttl_seconds": settings.CACHE_TTL_SECONDS,
-        "cached_items": len(_cache["data"] or []),
-    }
+    return HealthCheckResponse(
+        status="ok",
+        cache_ttl_seconds=settings.CACHE_TTL_SECONDS,
+        cached_items=len(_cache["data"] or []),
+    )
 
 
 # 🔄 ATUALIZAR CACHE
-@router.post("/cache/refresh")
+@router.post(
+    "/cache/refresh",
+    response_model=CacheRefreshResponse,
+    summary="Refresh Cache",
+    description="Força a atualização do cache. Útil para sincronizar dados mais recentes.",
+    tags=["Cache Management"],
+    operation_id="refreshCache",
+)
 @limiter.limit("10/minute")
 def atualizar_cache(
     request: Request,
     _: bool = Depends(auth)
-) -> dict[str, str]:
-    """Força atualização do cache."""
+) -> CacheRefreshResponse:
+    """
+    Força atualização do cache.
+
+    Endpoint protegido que limpa o cache em memória, forçando uma nova
+    leitura dos dados da planilha Google Sheets na próxima requisição.
+
+    Autenticação:
+        - JWT: Header Authorization: Bearer <token>
+        - API Key: Header x-api-key: <key>
+
+    Returns:
+        CacheRefreshResponse com mensagem de sucesso
+    """
     logger.info("Cache refresh solicitado")
     limpar_cache()
     carregar_dados()
     logger.info("Cache atualizado com sucesso")
-    return {"detail": "Cache atualizado com sucesso"}
+    return CacheRefreshResponse(detail="Cache atualizado com sucesso")
 
 
 # 🔎 BUSCAR PROJETO POR NÚMERO
-@router.get("/projeto/{numero}")
+@router.get(
+    "/projeto/{numero}",
+    response_model=dict[str, Any],
+    summary="Get Project",
+    description="Busca um projeto específico pelo seu número/ID.",
+    tags=["Projects"],
+    operation_id="getProject",
+)
 @limiter.limit("10/minute")
 def buscar_projeto(
-    numero: int,
-    request: Request,
-    _: bool = Depends(auth)
+    numero: int = Query(..., description="Número ou ID do projeto", example=1010),
+    request: Request = Request,
+    _: bool = Depends(auth),
 ) -> dict[str, Any]:
-    """Busca projeto específico por número."""
+    """
+    Busca projeto específico por número.
+
+    Retorna todos os dados do projeto correspondente ao número fornecido.
+    A busca é case-insensitive e normaliza os valores.
+
+    Path Parameters:
+        numero: Número do projeto (inteiro)
+
+    Autenticação:
+        - JWT: Header Authorization: Bearer <token>
+        - API Key: Header x-api-key: <key>
+
+    Returns:
+        Dicionário com todos os dados do projeto
+
+    Raises:
+        404: Projeto não encontrado
+    """
     numero_str = str(numero).strip()
     logger.debug(f"Buscando projeto {numero_str}")
     projetos = carregar_dados()
@@ -259,34 +325,51 @@ def buscar_projeto(
 
 
 # 📋 LISTAR PROJETOS COM FILTROS
-@router.get("/projetos")
+@router.get(
+    "/projetos",
+    response_model=List[dict[str, Any]],
+    summary="List Projects",
+    description="Lista todos os projetos com filtros opcionais por status e vendedor.",
+    tags=["Projects"],
+    operation_id="listProjects",
+)
 @limiter.limit("10/minute")
 def listar_projetos(
     request: Request,
     status: Optional[str] = Query(
-        None, description="Filtrar por status do projeto"
+        None,
+        description="Filtrar por status do projeto (case-insensitive). Exemplos: 'Ativo', 'Proposta', 'Parado'",
+        example="Ativo"
     ),
     vendedor: Optional[str] = Query(
-        None, description="Filtrar por responsável/vendedor"
+        None,
+        description="Filtrar por responsável/vendedor (case-insensitive). Exemplos: 'João Silva', 'Maria Santos'",
+        example="João Silva"
     ),
     _: bool = Depends(auth)
-) -> list[dict[str, Any]]:
+) -> List[dict[str, Any]]:
     """
     Lista projetos com filtros opcionais.
 
-    Args:
-        request: Objeto da requisição HTTP
-        status: Filtro opcional por status (case-insensitive)
-        vendedor: Filtro opcional por vendedor (case-insensitive)
-        _: Dependência de autenticação (JWT ou API Key)
+    Retorna lista de todos os projetos ou subconjunto filtrado.
+    Ambos os filtros são case-insensitive e podem ser combinados.
+
+    Query Parameters:
+        status: Filtro por status (opcional, case-insensitive)
+        vendedor: Filtro por vendedor (opcional, case-insensitive)
+
+    Autenticação:
+        - JWT: Header Authorization: Bearer <token>
+        - API Key: Header x-api-key: <key>
 
     Returns:
         Lista de projetos que correspondem aos critérios
 
     Examples:
-        GET /projetos?status=ativo
-        GET /projetos?vendedor=João
-        GET /projetos?status=ativo&vendedor=João
+        GET /projetos - Retorna todos os projetos
+        GET /projetos?status=Ativo - Apenas projetos ativos
+        GET /projetos?vendedor=João%20Silva - Apenas de João
+        GET /projetos?status=Ativo&vendedor=João - Ambos os filtros
     """
     logger.debug(f"Listando projetos com filtros: status={status}, vendedor={vendedor}")
     projetos = carregar_dados()
@@ -312,25 +395,38 @@ def listar_projetos(
 
 
 # 📊 RESUMO AGREGADO
-@router.get("/resumo")
+@router.get(
+    "/resumo",
+    response_model=SummaryResponse,
+    summary="Get Summary",
+    description="Retorna um resumo agregado com estatísticas de projetos por status e vendedor.",
+    tags=["Analytics"],
+    operation_id="getSummary",
+)
 @limiter.limit("10/minute")
 def resumo(
     request: Request,
     _: bool = Depends(auth)
-) -> dict[str, Any]:
+) -> SummaryResponse:
     """
     Retorna resumo agregado de projetos.
 
-    Args:
-        request: Objeto da requisição HTTP
-        _: Dependência de autenticação (JWT ou API Key)
+    Fornece estatísticas gerais incluindo:
+    - Total de projetos
+    - Contagem por status (Ativo, Proposta, Parado, etc.)
+    - Contagem por vendedor
+    - Informações sobre cache
+
+    Autenticação:
+        - JWT: Header Authorization: Bearer <token>
+        - API Key: Header x-api-key: <key>
 
     Returns:
-        Dicionário contendo:
+        SummaryResponse com:
         - total_projetos: Número total de projetos
         - por_status: Contagem de projetos por status
         - por_vendedor: Contagem de projetos por vendedor
-        - cache: Informações sobre cache (TTL, última atualização, quantidade de itens)
+        - cache: TTL, timestamp do último refresh, itens em cache
 
     Examples:
         GET /resumo
@@ -341,7 +437,7 @@ def resumo(
             "por_vendedor": {"João": 20, "Maria": 22},
             "cache": {
                 "ttl_seconds": 60,
-                "last_refresh_epoch": 1234567890.0,
+                "last_refresh_epoch": 1712254800.5,
                 "cached_items": 42
             }
         }
@@ -359,13 +455,13 @@ def resumo(
         por_status[status] = por_status.get(status, 0) + 1
         por_vendedor[vendedor] = por_vendedor.get(vendedor, 0) + 1
 
-    return {
-        "total_projetos": len(projetos),
-        "por_status": dict(sorted(por_status.items())),
-        "por_vendedor": dict(sorted(por_vendedor.items())),
-        "cache": {
-            "ttl_seconds": settings.CACHE_TTL_SECONDS,
-            "last_refresh_epoch": _cache["timestamp"],
-            "cached_items": len(_cache["data"] or []),
-        },
-    }
+    return SummaryResponse(
+        total_projetos=len(projetos),
+        por_status=dict(sorted(por_status.items())),
+        por_vendedor=dict(sorted(por_vendedor.items())),
+        cache=CacheInfo(
+            ttl_seconds=settings.CACHE_TTL_SECONDS,
+            last_refresh_epoch=_cache["timestamp"],
+            cached_items=len(_cache["data"] or []),
+        ),
+    )
