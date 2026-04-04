@@ -1,4 +1,0 @@
-.env
-config/esol-pbi-api.json
-__pycache__/
-*.pyc
