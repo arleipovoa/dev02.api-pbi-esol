@@ -38,12 +38,40 @@ _cache: dict[str, Any] = {
 
 
 def normalizar_texto(valor: Any) -> str:
-    """Normaliza texto removendo espaços extras."""
+    """
+    Normaliza texto removendo espaços extras.
+
+    Args:
+        valor: Valor a normalizar (pode ser de qualquer tipo)
+
+    Returns:
+        String normalizada com espaços removidos
+    """
     return str(valor).strip()
 
 
 def obter_valor_canonico(projeto: dict[str, Any], campo_canonico: str) -> str:
-    """Obtém valor do projeto usando aliases de coluna."""
+    """
+    Obtém valor do projeto usando aliases de coluna.
+
+    Funcionalidade: permite buscar um campo do projeto usando múltiplos aliases.
+    Por exemplo, a coluna "numero_projeto" pode ser chamada de "P", "Projeto",
+    "Número do Projeto", etc. Esta função encontra o primeiro alias que existe.
+
+    Args:
+        projeto: Dicionário com dados do projeto
+        campo_canonico: Nome canônico do campo (chave em COLUMN_ALIASES)
+
+    Returns:
+        Valor normalizado do campo, ou string vazia se não encontrado
+
+    Examples:
+        # Se projeto tem coluna "P"
+        obter_valor_canonico(projeto, "numero_projeto")  # -> valor de "P"
+
+        # Se projeto tem coluna "Status"
+        obter_valor_canonico(projeto, "status")  # -> valor de "Status"
+    """
     for alias in COLUMN_ALIASES.get(campo_canonico, []):
         valor = projeto.get(alias)
         if valor is not None and normalizar_texto(valor) != "":
@@ -52,7 +80,23 @@ def obter_valor_canonico(projeto: dict[str, Any], campo_canonico: str) -> str:
 
 
 def carregar_dados_planilha() -> list[dict[str, Any]]:
-    """Carrega dados da planilha Google Sheets."""
+    """
+    Carrega dados brutos da planilha Google Sheets.
+
+    Conecta-se à API de Google Sheets usando credenciais de Service Account
+    e retorna os dados da aba especificada (RANGE_NAME).
+
+    Returns:
+        Lista de dicionários, cada um representando uma linha da planilha
+        com headers como chaves
+
+    Raises:
+        SheetsError: Se houver erro ao acessar a planilha
+
+    Note:
+        Esta função faz uma conexão real com Google Sheets. Use com cuidado
+        em testes pois pode ser lenta. Para testes, considere mockar.
+    """
     try:
         credentials = service_account.Credentials.from_service_account_file(
             settings.SERVICE_ACCOUNT_FILE,
@@ -87,7 +131,18 @@ def carregar_dados_planilha() -> list[dict[str, Any]]:
 
 
 def carregar_dados() -> list[dict[str, Any]]:
-    """Carrega dados com cache TTL."""
+    """
+    Carrega dados com cache TTL (Time To Live).
+
+    Mantém os dados em cache na memória e só faz uma nova requisição
+    ao Google Sheets se o tempo de vida do cache expirou.
+
+    Returns:
+        Lista de projetos com cache
+
+    Note:
+        O tempo de TTL é configurável via CACHE_TTL_SECONDS
+    """
     agora = time.time()
     if _cache["data"] is None or (agora - _cache["timestamp"]) > settings.CACHE_TTL_SECONDS:
         _cache["data"] = carregar_dados_planilha()
@@ -97,9 +152,15 @@ def carregar_dados() -> list[dict[str, Any]]:
 
 
 def limpar_cache() -> None:
-    """Limpa o cache."""
+    """
+    Limpa o cache forçando uma nova requisição na próxima chamada.
+
+    Útil para forçar uma sincronização com os dados mais recentes da planilha.
+    Normalmente chamado pelo endpoint POST /cache/refresh.
+    """
     _cache["data"] = None
     _cache["timestamp"] = 0.0
+    logger.debug("Cache limpo")
 
 
 # 🔐 AUTENTICAÇÃO HÍBRIDA (JWT OU API KEY)
@@ -107,17 +168,43 @@ def auth(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     x_api_key: str = Header(None)
 ) -> bool:
-    """Autentica usando JWT ou API Key."""
+    """
+    Autentica requisição usando JWT ou API Key.
+
+    Suporta dois métodos de autenticação:
+    1. JWT via header Authorization: Bearer <token>
+    2. API Key via header x-api-key: <key>
+
+    Args:
+        credentials: Credenciais JWT opcionais via Security
+        x_api_key: API Key opcional via header
+
+    Returns:
+        True se autenticado com sucesso
+
+    Raises:
+        HTTPException: Status 403 se autenticação falhar
+
+    Examples:
+        # Com JWT
+        Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+        # Com API Key
+        x-api-key: sua-chave-api-aqui
+    """
     # 1️⃣ Verifica JWT
     if credentials:
         payload = verify_jwt(credentials.credentials)
         if payload:
+            logger.debug("Autenticação JWT bem-sucedida")
             return True
 
     # 2️⃣ Verifica API Key
     if x_api_key and verify_api_key(x_api_key):
+        logger.debug("Autenticação API Key bem-sucedida")
         return True
 
+    logger.warning("Tentativa de autenticação falhou")
     raise HTTPException(status_code=403, detail="Acesso não autorizado")
 
 
@@ -176,11 +263,32 @@ def buscar_projeto(
 @limiter.limit("10/minute")
 def listar_projetos(
     request: Request,
-    status: Optional[str] = Query(None),
-    vendedor: Optional[str] = Query(None),
+    status: Optional[str] = Query(
+        None, description="Filtrar por status do projeto"
+    ),
+    vendedor: Optional[str] = Query(
+        None, description="Filtrar por responsável/vendedor"
+    ),
     _: bool = Depends(auth)
 ) -> list[dict[str, Any]]:
-    """Lista projetos com filtros opcionais."""
+    """
+    Lista projetos com filtros opcionais.
+
+    Args:
+        request: Objeto da requisição HTTP
+        status: Filtro opcional por status (case-insensitive)
+        vendedor: Filtro opcional por vendedor (case-insensitive)
+        _: Dependência de autenticação (JWT ou API Key)
+
+    Returns:
+        Lista de projetos que correspondem aos critérios
+
+    Examples:
+        GET /projetos?status=ativo
+        GET /projetos?vendedor=João
+        GET /projetos?status=ativo&vendedor=João
+    """
+    logger.debug(f"Listando projetos com filtros: status={status}, vendedor={vendedor}")
     projetos = carregar_dados()
 
     if status:
@@ -189,6 +297,7 @@ def listar_projetos(
             p for p in projetos
             if obter_valor_canonico(p, "status").casefold() == status_norm
         ]
+        logger.debug(f"Filtro status aplicado: {len(projetos)} projetos encontrados")
 
     if vendedor:
         vendedor_norm = normalizar_texto(vendedor).casefold()
@@ -196,7 +305,9 @@ def listar_projetos(
             p for p in projetos
             if obter_valor_canonico(p, "vendedor").casefold() == vendedor_norm
         ]
+        logger.debug(f"Filtro vendedor aplicado: {len(projetos)} projetos encontrados")
 
+    logger.info(f"Retornando {len(projetos)} projetos")
     return projetos
 
 
@@ -207,7 +318,35 @@ def resumo(
     request: Request,
     _: bool = Depends(auth)
 ) -> dict[str, Any]:
-    """Retorna resumo de projetos agregados por status e vendedor."""
+    """
+    Retorna resumo agregado de projetos.
+
+    Args:
+        request: Objeto da requisição HTTP
+        _: Dependência de autenticação (JWT ou API Key)
+
+    Returns:
+        Dicionário contendo:
+        - total_projetos: Número total de projetos
+        - por_status: Contagem de projetos por status
+        - por_vendedor: Contagem de projetos por vendedor
+        - cache: Informações sobre cache (TTL, última atualização, quantidade de itens)
+
+    Examples:
+        GET /resumo
+        Response:
+        {
+            "total_projetos": 42,
+            "por_status": {"Ativo": 30, "Parado": 12},
+            "por_vendedor": {"João": 20, "Maria": 22},
+            "cache": {
+                "ttl_seconds": 60,
+                "last_refresh_epoch": 1234567890.0,
+                "cached_items": 42
+            }
+        }
+    """
+    logger.debug("Gerando resumo de projetos")
     projetos = carregar_dados()
 
     por_status: dict[str, int] = {}
