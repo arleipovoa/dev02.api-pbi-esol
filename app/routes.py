@@ -35,7 +35,7 @@ limiter = Limiter(key_func=get_remote_address)
 
 # Mapeamento de aliases de coluna para normalizar nomes
 COLUMN_ALIASES = {
-    "numero_projeto": ["P", "Projeto", "Número do Projeto", "Numero do Projeto", "Código", "Codigo"],
+    "numero_projeto": ["P", "p", "Projeto", "Número do Projeto", "Numero do Projeto", "Código", "Codigo"],
     "status": ["Status da Usina", "Status", "Situação", "Situacao"],
     "vendedor": ["Vendedor", "Consultor", "Responsável Comercial", "Responsavel Comercial"],
 }
