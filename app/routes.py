@@ -21,6 +21,7 @@ from app.models import (
     SummaryResponse,
     CacheRefreshResponse,
     CacheInfo,
+    LocalityFilterResponse,
 )
 from app.security import verify_jwt, verify_api_key
 
@@ -392,6 +393,112 @@ def listar_projetos(
 
     logger.info(f"Retornando {len(projetos)} projetos")
     return projetos
+
+
+# 🗺️ FILTRAR PROJETOS POR LOCALIDADE
+@router.get(
+    "/projetos/por-localidade",
+    response_model=LocalityFilterResponse,
+    summary="Filter Projects by Locality",
+    description="Filtra projetos por cidade, bairro, distrito e/ou estado.",
+    tags=["Projects"],
+    operation_id="filterProjectsByLocality",
+)
+@limiter.limit("10/minute")
+def filtrar_por_localidade(
+    request: Request,
+    cidade: Optional[str] = Query(
+        None,
+        description="Filtrar por cidade (case-insensitive). Ex: 'Manhuaçu'"
+    ),
+    bairro: Optional[str] = Query(
+        None,
+        description="Filtrar por bairro (case-insensitive). Ex: 'Centro'"
+    ),
+    distrito: Optional[str] = Query(
+        None,
+        description="Filtrar por distrito (case-insensitive)"
+    ),
+    estado: Optional[str] = Query(
+        None,
+        description="Filtrar por estado/UF (case-insensitive). Ex: 'MG', 'SP'"
+    ),
+    _: bool = Depends(auth)
+) -> LocalityFilterResponse:
+    """
+    Filtra projetos por localidade.
+
+    Retorna lista de projetos que correspondem aos critérios de localização.
+    Todos os filtros são case-insensitive e podem ser combinados.
+
+    Query Parameters:
+        cidade: Filtro por cidade (opcional)
+        bairro: Filtro por bairro (opcional)
+        distrito: Filtro por distrito (opcional)
+        estado: Filtro por estado/UF (opcional)
+
+    Autenticação:
+        - JWT: Header Authorization: Bearer <token>
+        - API Key: Header x-api-key: <key>
+
+    Returns:
+        LocalityFilterResponse com:
+        - total_encontrados: Quantidade de projetos encontrados
+        - projetos: Lista de projetos que correspondem aos critérios
+        - filtros_aplicados: Resumo dos filtros utilizados
+
+    Examples:
+        GET /projetos/por-localidade?cidade=Manhuaçu
+        GET /projetos/por-localidade?cidade=Manhuaçu&estado=MG
+        GET /projetos/por-localidade?bairro=Centro&estado=MG
+    """
+    logger.debug(
+        f"Filtrando projetos por localidade: "
+        f"cidade={cidade}, bairro={bairro}, distrito={distrito}, estado={estado}"
+    )
+    projetos = carregar_dados()
+
+    # Normalizar filtros
+    cidade_norm = cidade.strip().lower() if cidade else None
+    bairro_norm = bairro.strip().lower() if bairro else None
+    distrito_norm = distrito.strip().lower() if distrito else None
+    estado_norm = estado.strip().lower() if estado else None
+
+    # Filtrar projetos
+    projetos_filtrados = []
+    for projeto in projetos:
+        # Extrair e normalizar valores
+        proj_cidade = obter_valor_canonico(projeto, "cidade")
+        proj_bairro = obter_valor_canonico(projeto, "bairro")
+        proj_distrito = obter_valor_canonico(projeto, "distrito")
+        proj_estado = obter_valor_canonico(projeto, "estado")
+
+        # Aplicar filtros (AND logic)
+        if cidade_norm and proj_cidade != cidade_norm:
+            continue
+        if bairro_norm and proj_bairro != bairro_norm:
+            continue
+        if distrito_norm and proj_distrito != distrito_norm:
+            continue
+        if estado_norm and proj_estado != estado_norm:
+            continue
+
+        projetos_filtrados.append(projeto)
+
+    logger.info(
+        f"Filtro de localidade retornou {len(projetos_filtrados)} projetos"
+    )
+
+    return LocalityFilterResponse(
+        total_encontrados=len(projetos_filtrados),
+        projetos=projetos_filtrados,
+        filtros_aplicados={
+            "cidade": cidade,
+            "bairro": bairro,
+            "distrito": distrito,
+            "estado": estado,
+        },
+    )
 
 
 # 📊 RESUMO AGREGADO

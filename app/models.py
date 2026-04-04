@@ -190,6 +190,42 @@ class CacheRefreshResponse(BaseModel):
         }
 
 
+class LocalityFilterResponse(BaseModel):
+    """Resposta para filtro por localidade."""
+
+    total_encontrados: int = Field(..., description="Total de projetos encontrados")
+    projetos: List[Dict[str, Any]] = Field(
+        ...,
+        description="Lista de projetos que correspondem aos critérios"
+    )
+    filtros_aplicados: Dict[str, Optional[str]] = Field(
+        ...,
+        description="Filtros que foram aplicados na busca"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "total_encontrados": 5,
+                "projetos": [
+                    {
+                        "P": "1010",
+                        "Projeto": "Solar Panel Installation",
+                        "Bairro": "Centro",
+                        "Cidade": "Manhuaçu",
+                        "Estado": "MG"
+                    }
+                ],
+                "filtros_aplicados": {
+                    "cidade": "Manhuaçu",
+                    "estado": "MG",
+                    "bairro": None,
+                    "distrito": None
+                }
+            }
+        }
+
+
 class ErrorResponse(BaseModel):
     """Resposta de erro padrão."""
 
