@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  api:
+    build: .
+    container_name: esol-pbi-api
+    ports:
+      - "8000:8000"
+    environment:
+      - SPREADSHEET_ID=${SPREADSHEET_ID}
+      - SECRET_KEY=${SECRET_KEY}
+      - API_KEY_MASTER=${API_KEY_MASTER}
+      - ESOL_API_KEY=${ESOL_API_KEY:-}
+      - CACHE_TTL_SECONDS=${CACHE_TTL_SECONDS:-60}
+      - DEBUG=${DEBUG:-false}
+      - HOST=0.0.0.0
+      - PORT=8000
+    volumes:
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - esol-network
+
+networks:
+  esol-network:
+    driver: bridge
+
+volumes:
+  logs:
+    driver: local
