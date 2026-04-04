@@ -1,9 +1,23 @@
+# Web Framework
 fastapi
 uvicorn
+slowapi
+
+# Google Sheets Integration
 google-api-python-client
 google-auth
-python-dotenv
+
+# Security & Authentication
 python-jose
 passlib
+
+# Caching
 cachetools
-slowapi
+
+# Environment Management
+python-dotenv
+
+# Testing
+pytest>=7.0
+pytest-cov>=4.0
+pytest-asyncio>=0.20.0
