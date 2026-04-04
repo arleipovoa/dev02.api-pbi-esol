@@ -226,6 +226,59 @@ class LocalityFilterResponse(BaseModel):
         }
 
 
+class StatusFilterResponse(BaseModel):
+    """Resposta para filtro por status."""
+
+    total_encontrados: int = Field(..., description="Total de projetos encontrados")
+    status_filtro: List[str] = Field(..., description="Status que foram filtrados")
+    projetos: List[Dict[str, Any]] = Field(
+        ...,
+        description="Lista de projetos com os status especificados"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "total_encontrados": 49,
+                "status_filtro": ["PENDÊNCIA", "AGUARDANDO", "MUITO ATRASADO"],
+                "projetos": [
+                    {
+                        "P": "1010",
+                        "Projeto": "Solar Panel Installation",
+                        "Status da Usina": "PENDÊNCIA",
+                        "Vendedor": "João Silva"
+                    }
+                ]
+            }
+        }
+
+
+class CriticosResponse(BaseModel):
+    """Resposta para projetos críticos/muito atrasados."""
+
+    total_criticos: int = Field(..., description="Total de projetos muito atrasados")
+    projetos: List[Dict[str, Any]] = Field(
+        ...,
+        description="Lista de projetos com status MUITO ATRASADO"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "total_criticos": 5,
+                "projetos": [
+                    {
+                        "P": "1010",
+                        "Projeto": "Solar Panel Installation",
+                        "Status da Usina": "MUITO ATRASADO",
+                        "Vendedor": "João Silva",
+                        "Dias em atraso": 45
+                    }
+                ]
+            }
+        }
+
+
 class ErrorResponse(BaseModel):
     """Resposta de erro padrão."""
 

@@ -22,6 +22,8 @@ from app.models import (
     CacheRefreshResponse,
     CacheInfo,
     LocalityFilterResponse,
+    StatusFilterResponse,
+    CriticosResponse,
 )
 from app.security import verify_jwt, verify_api_key
 
@@ -498,6 +500,190 @@ def filtrar_por_localidade(
             "distrito": distrito,
             "estado": estado,
         },
+    )
+
+
+# 🔴 FILTRAR POR STATUS
+@router.get(
+    "/projetos/por-status",
+    response_model=StatusFilterResponse,
+    summary="Filter Projects by Status",
+    description="Filtra projetos por um ou múltiplos status.",
+    tags=["Projects"],
+    operation_id="filterProjectsByStatus",
+)
+@limiter.limit("10/minute")
+def filtrar_por_status(
+    request: Request,
+    status: List[str] = Query(
+        ...,
+        description="Status para filtrar (case-insensitive). Ex: 'EM OPERAÇÃO', 'PENDÊNCIA', 'AGUARDANDO', 'MUITO ATRASADO'. Pode informar múltiplos."
+    ),
+    _: bool = Depends(auth)
+) -> StatusFilterResponse:
+    """
+    Filtra projetos por um ou múltiplos status.
+
+    Retorna lista de projetos que correspondem aos status especificados.
+    Status é case-insensitive.
+
+    Query Parameters:
+        status: Um ou múltiplos status para filtrar (obrigatório)
+                Exemplos de valores válidos:
+                - EM OPERAÇÃO
+                - PENDÊNCIA
+                - AGUARDANDO
+                - MUITO ATRASADO
+                - CONCLUÍDO
+                - ATRASADO
+                - EM ANDAMENTO
+                - N/A
+
+    Autenticação:
+        - JWT: Header Authorization: Bearer <token>
+        - API Key: Header x-api-key: <key>
+
+    Returns:
+        StatusFilterResponse com:
+        - total_encontrados: Quantidade de projetos encontrados
+        - status_filtro: Status que foram filtrados
+        - projetos: Lista de projetos que correspondem aos critérios
+
+    Examples:
+        GET /projetos/por-status?status=EM OPERAÇÃO
+        GET /projetos/por-status?status=PENDÊNCIA&status=AGUARDANDO
+        GET /projetos/por-status?status=MUITO ATRASADO
+    """
+    logger.debug(f"Filtrando projetos por status: {status}")
+    projetos = carregar_dados()
+
+    # Normalizar filtros de status
+    status_norm = [s.strip().upper() for s in status]
+
+    # Filtrar projetos
+    projetos_filtrados = []
+    for projeto in projetos:
+        proj_status = obter_valor_canonico(projeto, "status")
+        if proj_status and proj_status.upper() in status_norm:
+            projetos_filtrados.append(projeto)
+
+    logger.info(f"Filtro de status retornou {len(projetos_filtrados)} projetos")
+
+    return StatusFilterResponse(
+        total_encontrados=len(projetos_filtrados),
+        status_filtro=status,
+        projetos=projetos_filtrados,
+    )
+
+
+# ⚠️ PROJETOS CRÍTICOS (MUITO ATRASADO)
+@router.get(
+    "/projetos/criticos",
+    response_model=CriticosResponse,
+    summary="Critical Projects",
+    description="Retorna projetos em status MUITO ATRASADO (críticos para ação imediata).",
+    tags=["Projects"],
+    operation_id="getCriticalProjects",
+)
+@limiter.limit("10/minute")
+def projetos_criticos(
+    request: Request,
+    _: bool = Depends(auth)
+) -> CriticosResponse:
+    """
+    Retorna projetos críticos (MUITO ATRASADO).
+
+    Identifica projetos que estão há muito tempo sem progresso.
+    Estes são prioritários para ação gerencial.
+
+    Autenticação:
+        - JWT: Header Authorization: Bearer <token>
+        - API Key: Header x-api-key: <key>
+
+    Returns:
+        CriticosResponse com:
+        - total_criticos: Quantidade de projetos muito atrasados
+        - projetos: Lista de projetos críticos
+
+    Examples:
+        GET /projetos/criticos
+    """
+    logger.debug("Buscando projetos críticos (MUITO ATRASADO)")
+    projetos = carregar_dados()
+
+    # Filtrar apenas projetos MUITO ATRASADO
+    projetos_criticos_list = []
+    for projeto in projetos:
+        proj_status = obter_valor_canonico(projeto, "status")
+        if proj_status and "MUITO ATRASADO" in proj_status.upper():
+            projetos_criticos_list.append(projeto)
+
+    logger.info(f"Encontrados {len(projetos_criticos_list)} projetos críticos")
+
+    return CriticosResponse(
+        total_criticos=len(projetos_criticos_list),
+        projetos=projetos_criticos_list,
+    )
+
+
+# 🚨 PROJETOS TRAVADOS (PENDÊNCIA + AGUARDANDO + MUITO ATRASADO)
+@router.get(
+    "/projetos/travados",
+    response_model=StatusFilterResponse,
+    summary="Blocked Projects",
+    description="Retorna projetos travados no funil (PENDÊNCIA, AGUARDANDO, MUITO ATRASADO).",
+    tags=["Projects"],
+    operation_id="getBlockedProjects",
+)
+@limiter.limit("10/minute")
+def projetos_travados(
+    request: Request,
+    _: bool = Depends(auth)
+) -> StatusFilterResponse:
+    """
+    Retorna projetos travados no funil de vendas.
+
+    Identifica projetos que estão com progresso parado:
+    - PENDÊNCIA: Aguardando ação de terceiros
+    - AGUARDANDO: Aguardando etapa seguinte
+    - MUITO ATRASADO: Já passou do prazo esperado
+
+    Estes projetos representam dinheiro parado e requerem destravamento.
+
+    Autenticação:
+        - JWT: Header Authorization: Bearer <token>
+        - API Key: Header x-api-key: <key>
+
+    Returns:
+        StatusFilterResponse com:
+        - total_encontrados: Quantidade de projetos travados
+        - status_filtro: Status que foram filtrados
+        - projetos: Lista de projetos travados
+
+    Examples:
+        GET /projetos/travados
+    """
+    logger.debug("Buscando projetos travados")
+    projetos = carregar_dados()
+
+    status_travados = ["PENDÊNCIA", "AGUARDANDO", "MUITO ATRASADO"]
+
+    # Filtrar projetos travados
+    projetos_travados_list = []
+    for projeto in projetos:
+        proj_status = obter_valor_canonico(projeto, "status")
+        if proj_status:
+            for status_trav in status_travados:
+                if status_trav in proj_status.upper():
+                    projetos_travados_list.append(projeto)
+                    break
+
+    logger.info(f"Encontrados {len(projetos_travados_list)} projetos travados")
+
+    return StatusFilterResponse(
+        total_encontrados=len(projetos_travados_list),
+        status_filtro=status_travados,
+        projetos=projetos_travados_list,
     )
 
 
