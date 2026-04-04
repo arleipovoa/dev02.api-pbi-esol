@@ -5,7 +5,7 @@ Define todos os endpoints da aplicação.
 from typing import Any, Optional, List
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request, Path
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -288,7 +288,7 @@ def atualizar_cache(
 )
 @limiter.limit("10/minute")
 def buscar_projeto(
-    numero: int = Query(..., description="Número ou ID do projeto", example=1010),
+    numero: int = Path(..., description="Número ou ID do projeto", example=1010),
     request: Request = Request,
     _: bool = Depends(auth),
 ) -> dict[str, Any]:
