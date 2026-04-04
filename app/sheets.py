@@ -1,32 +1,42 @@
+"""
+Módulo para integração com Google Sheets.
+Nota: Este módulo está deprecado. Use app.routes para carregamento de dados.
+"""
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-import os
-from dotenv import load_dotenv
+
 from app.cache import cache
+from app.config import settings
 
-load_dotenv()
 
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
-SERVICE_ACCOUNT_FILE = 'config/esol-pbi-api.json'
-SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
-RANGE_NAME = 'Projetos'
+def _build_service():
+    """Constrói o serviço de Sheets (privado)."""
+    credentials = service_account.Credentials.from_service_account_file(
+        settings.SERVICE_ACCOUNT_FILE, scopes=settings.SCOPES
+    )
+    return build("sheets", "v4", credentials=credentials)
 
-credentials = service_account.Credentials.from_service_account_file(
-    SERVICE_ACCOUNT_FILE, scopes=SCOPES)
 
-service = build('sheets', 'v4', credentials=credentials)
+def carregar_dados() -> list[dict]:
+    """
+    Carrega dados da planilha Google Sheets (DEPRECADO).
 
-def carregar_dados():
+    Use app.routes.carregar_dados() em vez disso.
+
+    Returns:
+        Lista de projetos
+    """
     if "dados" in cache:
         return cache["dados"]
 
+    service = _build_service()
     sheet = service.spreadsheets()
     result = sheet.values().get(
-        spreadsheetId=SPREADSHEET_ID,
-        range=RANGE_NAME
+        spreadsheetId=settings.SPREADSHEET_ID,
+        range=settings.RANGE_NAME
     ).execute()
 
-    values = result.get('values', [])
+    values = result.get("values", [])
 
     headers = values[0]
     data = values[1:]
