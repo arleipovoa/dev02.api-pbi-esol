@@ -320,12 +320,11 @@ def buscar_projeto(
 
     for projeto in projetos:
         proj_numero = obter_valor_canonico(projeto, "numero_projeto").casefold()
-        logger.debug(f"Comparando: '{numero_str}' com '{proj_numero}'")
         if proj_numero == numero_str:
             logger.info(f"Projeto {numero} encontrado")
             return projeto
 
-    logger.warning(f"Projeto {numero} não encontrado. Números disponíveis: {[obter_valor_canonico(p, 'numero_projeto') for p in projetos[:5]]}")
+    logger.warning(f"Projeto {numero} não encontrado")
     raise HTTPException(status_code=404, detail=f"Projeto {numero} não encontrado")
 
 
