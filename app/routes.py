@@ -18,7 +18,6 @@ from app.logger import logger
 from app.models import (
     HealthCheckResponse,
     ProjectResponse,
-    ProjectsListResponse,
     SummaryResponse,
     CacheRefreshResponse,
     CacheInfo,
@@ -328,7 +327,7 @@ def buscar_projeto(
 # 📋 LISTAR PROJETOS COM FILTROS
 @router.get(
     "/projetos",
-    response_model=ProjectsListResponse,
+    response_model=List[ProjectResponse],
     summary="List Projects",
     description="Lista todos os projetos com filtros opcionais por status e vendedor.",
     tags=["Projects"],

@@ -24,10 +24,6 @@ app = FastAPI(
         {
             "url": "https://esol-pbi-api.onrender.com",
             "description": "Production API (Render)"
-        },
-        {
-            "url": "http://localhost:8000",
-            "description": "Local development"
         }
     ]
 )
