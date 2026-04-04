@@ -314,17 +314,19 @@ def buscar_projeto(
     Raises:
         404: Projeto não encontrado
     """
-    numero_str = str(numero).strip()
-    logger.debug(f"Buscando projeto {numero_str}")
+    numero_str = str(numero).strip().casefold()
+    logger.debug(f"Buscando projeto {numero}")
     projetos = carregar_dados()
 
     for projeto in projetos:
-        if obter_valor_canonico(projeto, "numero_projeto") == numero_str:
-            logger.info(f"Projeto {numero_str} encontrado")
+        proj_numero = obter_valor_canonico(projeto, "numero_projeto").casefold()
+        logger.debug(f"Comparando: '{numero_str}' com '{proj_numero}'")
+        if proj_numero == numero_str:
+            logger.info(f"Projeto {numero} encontrado")
             return projeto
 
-    logger.warning(f"Projeto {numero_str} não encontrado")
-    raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    logger.warning(f"Projeto {numero} não encontrado. Números disponíveis: {[obter_valor_canonico(p, 'numero_projeto') for p in projetos[:5]]}")
+    raise HTTPException(status_code=404, detail=f"Projeto {numero} não encontrado")
 
 
 # 📋 LISTAR PROJETOS COM FILTROS
