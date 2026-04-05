@@ -283,7 +283,7 @@ def atualizar_cache(
 # 🔎 BUSCAR PROJETO POR NÚMERO
 @router.get(
     "/projeto/{numero}",
-    response_model=ProjectResponse,
+    response_model=Dict[str, Any],
     summary="Get Project",
     description="Busca um projeto específico pelo seu número/ID.",
     tags=["Projects"],
