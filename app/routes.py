@@ -24,6 +24,7 @@ from app.models import (
     LocalityFilterResponse,
     StatusFilterResponse,
     CriticosResponse,
+    ProjectDataResponse,
 )
 from app.security import verify_jwt, verify_api_key
 
@@ -283,7 +284,7 @@ def atualizar_cache(
 # 🔎 BUSCAR PROJETO POR NÚMERO
 @router.get(
     "/projeto/{numero}",
-    response_model=Dict[str, Any],
+    response_model=ProjectDataResponse,
     summary="Get Project",
     description="Busca um projeto específico pelo seu número/ID.",
     tags=["Projects"],

@@ -279,6 +279,20 @@ class CriticosResponse(BaseModel):
         }
 
 
+class ProjectDataResponse(BaseModel):
+    """Resposta flexível para dados de projeto - aceita qualquer campo."""
+
+    class Config:
+        extra = "allow"
+        json_schema_extra = {
+            "example": {
+                "p": "999",
+                "Apelido da Usina": "Christiane Ferreira Ker",
+                "Status da Usina": "EM OPERAÇÃO"
+            }
+        }
+
+
 class ErrorResponse(BaseModel):
     """Resposta de erro padrão."""
 
