@@ -36,16 +36,13 @@ app.add_middleware(
         "https://chat.openai.com",  # OpenAI GPT Builder
         "https://openai.com",       # OpenAI platform
         "https://platform.openai.com",  # OpenAI platform
-        "http://localhost:3000",    # Local development
-        "http://localhost:8000",    # Local development
+        "http://localhost:3000",    # Local development (React/Vite default)
+        "http://localhost:8000",    # Local development (FastAPI default)
+        "http://localhost:8080",    # Local development (Dyad/User environment)
     ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=[
-        "Content-Type",
-        "Authorization",
-        "x-api-key",  # Custom header para API Key
-    ],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"], # Permitir todos os headers para evitar problemas de preflight
 )
 
 # Rate limiter global
