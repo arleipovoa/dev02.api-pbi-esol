@@ -28,24 +28,7 @@ app = FastAPI(
     ]
 )
 
-# CORS Configuration
-# Necessário para OpenAI Custom Actions conseguir fazer requisições
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "https://chat.openai.com",  # OpenAI GPT Builder
-        "https://openai.com",       # OpenAI platform
-        "https://platform.openai.com",  # OpenAI platform
-        "http://localhost:3000",    # Local development (React/Vite default)
-        "http://localhost:8000",    # Local development (FastAPI default)
-        "http://localhost:8080",    # Local development (Dyad/User environment)
-    ],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"], # Permitir todos os headers para evitar problemas de preflight
-)
-
-# Rate limiter global
+# 1. Rate limiter configuration
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 
@@ -58,10 +41,31 @@ app.add_exception_handler(
     ),
 )
 
-# Middleware
+# 2. Add Middlewares (A ordem importa!)
+# Starlette/FastAPI executa middlewares em ordem LIFO (o último adicionado é o mais externo)
+
+# Rate Limiter (Executado DEPOIS do CORS no processamento da resposta)
 app.add_middleware(SlowAPIMiddleware)
 
-# Incluir rotas
+# CORS Middleware (Deve ser o MAIS EXTERNO para garantir os headers em todas as respostas)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://chat.openai.com",
+        "https://openai.com",
+        "https://platform.openai.com",
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "https://form-to-pbi.vercel.app", # Exemplo de possível origin production
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+# 3. Incluir rotas
 app.include_router(router)
 
 # Startup event
