@@ -25,61 +25,81 @@ def _build_service():
     )
     return build("sheets", "v4", credentials=credentials)
 
+def _col_letter(n: int) -> str:
+    """Converte índice 0-based para letra(s) de coluna — suporta A-Z, AA-ZZ, etc."""
+    s, n = "", n + 1
+    while n:
+        n, r = divmod(n - 1, 26)
+        s = chr(65 + r) + s
+    return s
+
+
 def atualizar_projeto_sheet(numero: str, novos_dados: dict) -> bool:
     """
     Atualiza um projeto na planilha Google Sheets.
-    
-    Busca o projeto pela coluna 'P' (ID sugerido) e atualiza cada campo 
+
+    Busca o projeto pela coluna do código P e atualiza cada campo
     enviado no dicionário correspondente ao cabeçalho.
     """
     service = _build_service()
     sheet = service.spreadsheets()
-    
+
     # 1. Recuperar cabeçalhos para mapeamento
     try:
         result = sheet.values().get(
             spreadsheetId=SPREADSHEET_ID,
             range=RANGE_NAME
         ).execute()
-        
+
         values = result.get('values', [])
         if not values:
             return False
-            
+
         headers = values[0]
         header_to_idx = {h.strip(): i for i, h in enumerate(headers)}
     except Exception:
         return False
-        
-    # 2. Encontrar a linha correta (Coluna P)
-    p_idx = header_to_idx.get("P")
+
+    # 2. Encontrar a linha correta — a coluna pode se chamar "Código P" ou "P"
+    p_idx = None
+    for _key in ("Código P", "P", "Codigo P", "A2"):
+        if _key in header_to_idx:
+            p_idx = header_to_idx[_key]
+            break
     if p_idx is None:
         return False
-        
+
+    # Strip "P" prefix from cell values when comparing (e.g. "P1046" → "1046")
+    numero_normalizado = str(numero).strip().lstrip("Pp")
+
     row_to_update = -1
     for i, row in enumerate(values[1:], start=2):
-        if len(row) > p_idx and str(row[p_idx]).strip() == str(numero).strip():
-            row_to_update = i
-            break
-            
+        if len(row) > p_idx:
+            cell = str(row[p_idx]).strip().lstrip("Pp")
+            if cell == numero_normalizado:
+                row_to_update = i
+                break
+
     if row_to_update == -1:
         return False
-        
-    # 3. Atualizar cada campo enviado
+
+    # 3. Atualizar todos os campos em um único batchUpdate (evita rate limit)
+    batch_data = []
     for col_name, value in novos_dados.items():
         if col_name in header_to_idx:
             c_idx = header_to_idx[col_name]
-            # Converte índice para letra da coluna (A-Z)
-            col_letter = chr(ord('A') + c_idx)
-            update_range = f"{RANGE_NAME}!{col_letter}{row_to_update}"
-            
-            sheet.values().update(
-                spreadsheetId=SPREADSHEET_ID,
-                range=update_range,
-                valueInputOption="USER_ENTERED",
-                body={"values": [[str(value)]]}
-            ).execute()
-            
+            col_letter = _col_letter(c_idx)
+            batch_data.append({
+                "range": f"{RANGE_NAME}!{col_letter}{row_to_update}",
+                "values": [[str(value)]]
+            })
+
+    if batch_data:
+        sheet.values().batchUpdate(
+            spreadsheetId=SPREADSHEET_ID,
+            body={"valueInputOption": "USER_ENTERED", "data": batch_data}
+        ).execute()
+
     return True
 
 def criar_projeto_sheet(dados_novo: dict) -> bool:
