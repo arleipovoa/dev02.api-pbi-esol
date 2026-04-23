@@ -318,6 +318,70 @@ def criar_projeto(
         raise HTTPException(status_code=500, detail=f"Erro ao criar projeto: {str(e)}")
 
 
+# 📄 GERAR DOCUMENTOS (CONTRATO / PROCURAÇÃO) VIA APPS SCRIPT
+@router.post(
+    "/gerar-documentos/{numero}",
+    summary="Generate Documents",
+    tags=["Projects"],
+)
+@limiter.limit("5/minute")
+def gerar_documentos(
+    numero: int,
+    request: Request,
+    _: bool = Depends(auth),
+):
+    import os, httpx
+    apps_script_url = os.getenv("APPS_SCRIPT_URL")
+    if not apps_script_url:
+        raise HTTPException(status_code=503, detail="APPS_SCRIPT_URL não configurada no servidor")
+
+    # Busca os dados do projeto na planilha (via cache)
+    projetos = carregar_dados()
+    numero_str = str(numero)
+    projeto_dados = None
+    for p in projetos:
+        cod = str(p.get("Código P") or p.get("P") or p.get("A2") or "").strip().lstrip("Pp")
+        if cod == numero_str:
+            projeto_dados = p
+            break
+
+    if projeto_dados is None:
+        raise HTTPException(status_code=404, detail=f"Projeto {numero} não encontrado")
+
+    # Chama o Apps Script Web App com os dados do projeto
+    try:
+        resp = httpx.post(
+            apps_script_url,
+            json={"numero": numero_str, "dados": projeto_dados},
+            timeout=30.0,
+            follow_redirects=True,
+        )
+        resp.raise_for_status()
+        resultado = resp.json()
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Apps Script demorou muito para responder")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erro ao chamar Apps Script: {str(e)}")
+
+    if not resultado.get("success"):
+        raise HTTPException(status_code=502, detail=resultado.get("error", "Erro no Apps Script"))
+
+    # Salva as URLs geradas de volta na planilha
+    urls = resultado.get("urls", {})
+    if urls:
+        from app.sheets import atualizar_projeto_sheet
+        campos_url = {}
+        if urls.get("contrato"):
+            campos_url["URL Contrato"] = urls["contrato"]
+        if urls.get("procuracao"):
+            campos_url["URL Procuração"] = urls["procuracao"]
+        if campos_url:
+            atualizar_projeto_sheet(numero_str, campos_url)
+            limpar_cache()
+
+    return urls
+
+
 # 🗺️ FILTRAR PROJETOS POR LOCALIDADE
 @router.get(
     "/projetos/por-localidade",

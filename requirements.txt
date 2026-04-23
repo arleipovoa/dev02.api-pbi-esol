@@ -2,6 +2,7 @@
 fastapi
 uvicorn
 slowapi
+httpx
 
 # Google Sheets Integration
 google-api-python-client
