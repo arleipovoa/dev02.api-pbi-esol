@@ -353,7 +353,7 @@ def gerar_documentos(
         resp = httpx.post(
             apps_script_url,
             json={"numero": numero_str, "dados": projeto_dados},
-            timeout=30.0,
+            timeout=120.0,
             follow_redirects=True,
         )
         resp.raise_for_status()
