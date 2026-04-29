@@ -105,6 +105,7 @@ def criar_projeto_sheet(dados_novo: dict) -> bool:
     service = _build_service()
     sheet = service.spreadsheets()
 
+    # 1. Obter cabeçalhos
     result = sheet.values().get(
         spreadsheetId=SPREADSHEET_ID,
         range=RANGE_NAME
@@ -125,13 +126,42 @@ def criar_projeto_sheet(dados_novo: dict) -> bool:
         if not new_row[idx]:
             new_row[idx] = time.strftime("%Y-%m-%d %H:%M:%S")
 
-    body = {"values": [new_row]}
-    sheet.values().append(
+    # 2. Descobrir o sheetId numérico da aba "Projetos"
+    meta = service.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
+    sheet_id = None
+    for s in meta.get('sheets', []):
+        if s['properties']['title'] == RANGE_NAME:
+            sheet_id = s['properties']['sheetId']
+            break
+    if sheet_id is None:
+        return False
+
+    # 3. Inserir linha em branco na posição 2 (índice 1, logo após o cabeçalho)
+    #    inheritFromBefore=False → herda formatação/fórmulas da linha abaixo (row anterior row 2)
+    service.spreadsheets().batchUpdate(
         spreadsheetId=SPREADSHEET_ID,
-        range=RANGE_NAME,
+        body={
+            "requests": [{
+                "insertDimension": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "dimension": "ROWS",
+                        "startIndex": 1,
+                        "endIndex": 2
+                    },
+                    "inheritFromBefore": False
+                }
+            }]
+        }
+    ).execute()
+
+    # 4. Escrever os dados na nova linha 2
+    col_end = _col_letter(len(headers) - 1)
+    sheet.values().update(
+        spreadsheetId=SPREADSHEET_ID,
+        range=f"{RANGE_NAME}!A2:{col_end}2",
         valueInputOption="USER_ENTERED",
-        insertDataOption="INSERT_ROWS",
-        body=body
+        body={"values": [new_row]}
     ).execute()
 
     return True
