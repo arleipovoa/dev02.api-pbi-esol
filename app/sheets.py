@@ -101,18 +101,22 @@ def atualizar_projeto_sheet(numero: str, novos_dados: dict) -> bool:
     return True
 
 
-def criar_projeto_sheet(dados_novo: dict) -> bool:
+def criar_projeto_sheet(dados_novo: dict) -> int:
+    """
+    Insere novo projeto na linha 2 (após cabeçalho) e retorna o número P atribuído.
+    O número P é calculado como max(coluna A) + 1.
+    """
     service = _build_service()
     sheet = service.spreadsheets()
 
-    # 1. Obter cabeçalhos
+    # 1. Obter cabeçalhos e dados existentes
     result = sheet.values().get(
         spreadsheetId=SPREADSHEET_ID,
         range=RANGE_NAME
     ).execute()
     values = result.get('values', [])
     if not values:
-        return False
+        raise ValueError("Planilha vazia ou sem cabeçalho")
 
     headers = values[0]
     new_row = [""] * len(headers)
@@ -125,6 +129,27 @@ def criar_projeto_sheet(dados_novo: dict) -> bool:
         idx = headers.index("Data de Cadastro")
         if not new_row[idx]:
             new_row[idx] = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    # 2. Calcular próximo número P (max(coluna A) + 1) a partir das linhas existentes
+    p_col_idx = None
+    for candidate in ("P", "Código P", "Codigo P", "A2"):
+        if candidate in headers:
+            p_col_idx = headers.index(candidate)
+            break
+
+    next_p = 1
+    if p_col_idx is not None:
+        p_values = []
+        for row in values[1:]:
+            if len(row) > p_col_idx:
+                raw = str(row[p_col_idx]).strip().lstrip("Pp")
+                try:
+                    p_values.append(int(raw))
+                except ValueError:
+                    pass
+        if p_values:
+            next_p = max(p_values) + 1
+        new_row[p_col_idx] = str(next_p)
 
     # 2. Descobrir o sheetId numérico da aba "Projetos"
     meta = service.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
@@ -164,4 +189,4 @@ def criar_projeto_sheet(dados_novo: dict) -> bool:
         body={"values": [new_row]}
     ).execute()
 
-    return True
+    return next_p

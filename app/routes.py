@@ -311,9 +311,9 @@ def criar_projeto(
 ):
     from app.sheets import criar_projeto_sheet
     try:
-        criar_projeto_sheet(dados)
+        numero_p = criar_projeto_sheet(dados)
         limpar_cache()
-        return {"detail": "Projeto criado com sucesso"}
+        return {"detail": "Projeto criado com sucesso", "numero_p": numero_p}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao criar projeto: {str(e)}")
 
