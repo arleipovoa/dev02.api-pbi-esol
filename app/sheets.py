@@ -16,6 +16,9 @@ SERVICE_ACCOUNT_FILE = 'config/esol-pbi-api.json'
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "1AFnXPQEfgBFOzbNrjqnhBiHrMxC-LLc9TyeTxZnPDJY")
 RANGE_NAME = 'Projetos'
 
+# Abas adicionais onde inserir linha junto com "Projetos"
+ABAS_EXTRAS = ("Fiscal", "OPEX", "NPS", "Mídias")
+
 
 def _build_service():
     credentials = service_account.Credentials.from_service_account_file(
@@ -104,37 +107,34 @@ def atualizar_projeto_sheet(numero: str, novos_dados: dict) -> bool:
 def criar_projeto_sheet(dados_novo: dict) -> int:
     """
     Insere novo projeto na linha 2 (após cabeçalho) e retorna o número P atribuído.
-    O número P é calculado como max(coluna A) + 1.
+
+    Abordagem:
+      1. Insere linha em branco na posição 2 em Projetos + abas extras
+      2. Copia FÓRMULAS da row 3 para row 2 em Projetos (preserva fórmulas calculadas)
+      3. Copia TUDO da row 3 para row 2 nas abas extras (Fiscal, OPEX, NPS, Mídias)
+      4. Escreve apenas as células de dados (batchUpdate individual — não sobrescreve fórmulas)
     """
     service = _build_service()
     sheet = service.spreadsheets()
 
-    # 1. Obter cabeçalhos e dados existentes
+    # ── 1. Obter cabeçalhos e dados existentes ──────────────────────────────────
     result = sheet.values().get(
         spreadsheetId=SPREADSHEET_ID,
         range=RANGE_NAME
     ).execute()
     values = result.get('values', [])
     if not values:
-        raise ValueError("Planilha vazia ou sem cabeçalho")
+        raise ValueError("Planilha vazia ou sem cabecalho")
 
     headers = values[0]
-    new_row = [""] * len(headers)
-    for key, value in dados_novo.items():
-        if key in headers:
-            idx = headers.index(key)
-            new_row[idx] = str(value)
+    header_to_idx = {h.strip(): i for i, h in enumerate(headers)}
+    num_cols = len(headers)
 
-    if "Data de Cadastro" in headers:
-        idx = headers.index("Data de Cadastro")
-        if not new_row[idx]:
-            new_row[idx] = time.strftime("%Y-%m-%d %H:%M:%S")
-
-    # 2. Calcular próximo número P (max(coluna A) + 1) a partir das linhas existentes
+    # ── 2. Calcular próximo número P (para retorno — célula usará fórmula) ──────
     p_col_idx = None
-    for candidate in ("P", "Código P", "Codigo P", "A2"):
-        if candidate in headers:
-            p_col_idx = headers.index(candidate)
+    for candidate in ("Código P", "P", "Codigo P", "A2"):
+        if candidate in header_to_idx:
+            p_col_idx = header_to_idx[candidate]
             break
 
     next_p = 1
@@ -149,44 +149,117 @@ def criar_projeto_sheet(dados_novo: dict) -> int:
                     pass
         if p_values:
             next_p = max(p_values) + 1
-        new_row[p_col_idx] = str(next_p)
 
-    # 2. Descobrir o sheetId numérico da aba "Projetos"
+    # ── 3. Descobrir sheetIds de todas as abas ──────────────────────────────────
     meta = service.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
-    sheet_id = None
+    sheets_meta = {}
     for s in meta.get('sheets', []):
-        if s['properties']['title'] == RANGE_NAME:
-            sheet_id = s['properties']['sheetId']
-            break
-    if sheet_id is None:
-        return False
+        props = s['properties']
+        sheets_meta[props['title']] = {
+            'sheetId': props['sheetId'],
+            'cols': props.get('gridProperties', {}).get('columnCount', 100),
+        }
 
-    # 3. Inserir linha em branco na posição 2 (índice 1, logo após o cabeçalho)
-    #    inheritFromBefore=False → herda formatação/fórmulas da linha abaixo (row anterior row 2)
+    projetos_meta = sheets_meta.get(RANGE_NAME)
+    if projetos_meta is None:
+        raise ValueError(f"Aba '{RANGE_NAME}' nao encontrada")
+
+    # ── 4. Batch requests: inserir linhas + copiar fórmulas ─────────────────────
+    requests = []
+
+    # Projetos: inserir linha 2 + copiar FÓRMULAS de row 3
+    requests.append({
+        "insertDimension": {
+            "range": {
+                "sheetId": projetos_meta['sheetId'],
+                "dimension": "ROWS",
+                "startIndex": 1,
+                "endIndex": 2,
+            },
+            "inheritFromBefore": False,
+        }
+    })
+    requests.append({
+        "copyPaste": {
+            "source": {
+                "sheetId": projetos_meta['sheetId'],
+                "startRowIndex": 2, "endRowIndex": 3,
+                "startColumnIndex": 0, "endColumnIndex": num_cols,
+            },
+            "destination": {
+                "sheetId": projetos_meta['sheetId'],
+                "startRowIndex": 1, "endRowIndex": 2,
+                "startColumnIndex": 0, "endColumnIndex": num_cols,
+            },
+            "pasteType": "PASTE_FORMULA",
+        }
+    })
+
+    # Abas extras: inserir linha 2 + copiar TUDO (fórmulas + dados) de row 3
+    for aba_name in ABAS_EXTRAS:
+        if aba_name not in sheets_meta:
+            continue
+        aba = sheets_meta[aba_name]
+        requests.append({
+            "insertDimension": {
+                "range": {
+                    "sheetId": aba['sheetId'],
+                    "dimension": "ROWS",
+                    "startIndex": 1,
+                    "endIndex": 2,
+                },
+                "inheritFromBefore": False,
+            }
+        })
+        requests.append({
+            "copyPaste": {
+                "source": {
+                    "sheetId": aba['sheetId'],
+                    "startRowIndex": 2, "endRowIndex": 3,
+                    "startColumnIndex": 0, "endColumnIndex": aba['cols'],
+                },
+                "destination": {
+                    "sheetId": aba['sheetId'],
+                    "startRowIndex": 1, "endRowIndex": 2,
+                    "startColumnIndex": 0, "endColumnIndex": aba['cols'],
+                },
+                "pasteType": "PASTE_NORMAL",
+            }
+        })
+
     service.spreadsheets().batchUpdate(
         spreadsheetId=SPREADSHEET_ID,
-        body={
-            "requests": [{
-                "insertDimension": {
-                    "range": {
-                        "sheetId": sheet_id,
-                        "dimension": "ROWS",
-                        "startIndex": 1,
-                        "endIndex": 2
-                    },
-                    "inheritFromBefore": False
-                }
-            }]
-        }
+        body={"requests": requests}
     ).execute()
 
-    # 4. Escrever os dados na nova linha 2
-    col_end = _col_letter(len(headers) - 1)
-    sheet.values().update(
-        spreadsheetId=SPREADSHEET_ID,
-        range=f"{RANGE_NAME}!A2:{col_end}2",
-        valueInputOption="USER_ENTERED",
-        body={"values": [new_row]}
-    ).execute()
+    # ── 5. Escrever dados nas células específicas (preserva fórmulas) ───────────
+    batch_data = []
+    written_indices = set()
+
+    for key, value in dados_novo.items():
+        if key in header_to_idx:
+            c_idx = header_to_idx[key]
+            col_letter = _col_letter(c_idx)
+            batch_data.append({
+                "range": f"{RANGE_NAME}!{col_letter}2",
+                "values": [[str(value)]]
+            })
+            written_indices.add(c_idx)
+
+    # Data de Cadastro (se não veio no payload)
+    if "Data de Cadastro" in header_to_idx:
+        ts_idx = header_to_idx["Data de Cadastro"]
+        if ts_idx not in written_indices:
+            ts_col = _col_letter(ts_idx)
+            batch_data.append({
+                "range": f"{RANGE_NAME}!{ts_col}2",
+                "values": [[time.strftime("%Y-%m-%d %H:%M:%S")]]
+            })
+
+    if batch_data:
+        sheet.values().batchUpdate(
+            spreadsheetId=SPREADSHEET_ID,
+            body={"valueInputOption": "USER_ENTERED", "data": batch_data}
+        ).execute()
 
     return next_p

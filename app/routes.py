@@ -330,7 +330,7 @@ def gerar_documentos(
     request: Request,
     _: bool = Depends(auth),
 ):
-    import os, httpx
+    import os, re, httpx
     apps_script_url = os.getenv("APPS_SCRIPT_URL")
     if not apps_script_url:
         raise HTTPException(status_code=503, detail="APPS_SCRIPT_URL não configurada no servidor")
@@ -347,6 +347,26 @@ def gerar_documentos(
 
     if projeto_dados is None:
         raise HTTPException(status_code=404, detail=f"Projeto {numero} não encontrado")
+
+    # Limpa valores formatados pt-BR (ex: "R$ 23.000,00" → 23000.0)
+    # A API lê FORMATTED_VALUE por padrão; o Apps Script precisa de números limpos.
+    _CAMPOS_NUMERICOS = {
+        "CAPEX", "Potência (kWp)", "Potência dos Módulos", "Potência Inversor",
+        "Potência CA Total (kW)", "Geração Estimada (kWh/mês)",
+        "Geração Média Espec. (kWh/mês/kWp)", "Qnt. de Módulos", "Qnt. Inversores",
+    }
+    projeto_dados = dict(projeto_dados)  # cópia para não alterar o cache
+    for campo in _CAMPOS_NUMERICOS:
+        val = projeto_dados.get(campo)
+        if val is None or isinstance(val, (int, float)):
+            continue
+        if isinstance(val, str) and val.strip():
+            # Remove tudo exceto dígitos, vírgula e sinal negativo
+            limpo = re.sub(r'[^\d,-]', '', val).replace(',', '.')
+            try:
+                projeto_dados[campo] = float(limpo)
+            except ValueError:
+                pass
 
     # Chama o Apps Script Web App com os dados do projeto
     try:

@@ -101,4 +101,4 @@ settings = Settings()
 try:
     settings.validate()
 except ValueError as e:
-    print(f"⚠️  Aviso de configuração: {e}")
+    print(f"[AVISO] Configuracao invalida: {e}")
