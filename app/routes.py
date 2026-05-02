@@ -439,6 +439,31 @@ def filtrar_por_localidade(
         filtros_aplicados={"cidade": cidade, "bairro": bairro, "distrito": distrito, "estado": estado},
     )
 
+import os
+
+@router.get("/avaliacoes", tags=["Avaliações"])
+@limiter.limit("10/minute")
+def listar_avaliacoes(request: Request, _: bool = Depends(auth)):
+    spreadsheet_id = os.getenv("1JVgAmMknpUlV7MHy1kkNJsmHnDibvSzHA2wp265bu2I")
+    sheet_name = os.getenv("SHEET_NAME_AVALIACOES", "Avaliações")
+    if not spreadsheet_id:
+        raise HTTPException(status_code=500, detail="SPREADSHEET_ID_AVALIACOES não configurado")
+    try:
+        credentials = service_account.Credentials.from_service_account_file(
+            settings.SERVICE_ACCOUNT_FILE, scopes=settings.SCOPES,
+        )
+        service = build("sheets", "v4", credentials=credentials)
+        result = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id, range=sheet_name
+        ).execute()
+        values = result.get("values", [])
+        if not values:
+            return {"total": 0, "data": []}
+        headers = [str(h).strip() for h in values[0]]
+        rows = [dict(zip(headers, row + [""] * (len(headers) - len(row)))) for row in values[1:]]
+        return {"total": len(rows), "data": rows}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao ler avaliações: {str(e)}")
 
 # 🔴 FILTRAR POR STATUS
 @router.get(
