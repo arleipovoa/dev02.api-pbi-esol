@@ -48,6 +48,17 @@ class Settings:
     ESOL_API_KEY: Optional[str] = os.getenv("ESOL_API_KEY")
 
     # ========================
+    # Google Maps (server-side proxy)
+    # ========================
+    GOOGLE_MAPS_API_KEY: Optional[str] = os.getenv("GOOGLE_MAPS_API_KEY")
+
+    # ========================
+    # Supabase Admin
+    # ========================
+    SUPABASE_URL: Optional[str] = os.getenv("SUPABASE_URL")
+    SUPABASE_SERVICE_ROLE_KEY: Optional[str] = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    # ========================
     # Server Config
     # ========================
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"

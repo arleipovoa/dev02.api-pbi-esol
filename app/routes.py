@@ -33,6 +33,12 @@ security = HTTPBearer(auto_error=False)
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address)
 
+# Lista canônica de instaladores (ordem fixa, mantendo acentos)
+INSTALADORES = [
+    "Elivelton", "Fábio", "Moisés", "Gabriel T", "Gabriel M", "Hyan",
+    "Gustavo", "Kauã", "Gustavo P", "Enderson", "Flávio", "Ley", "Élder",
+]
+
 # Mapeamento de aliases de coluna para normalizar nomes
 COLUMN_ALIASES = {
     "numero_projeto": ["P", "Projeto", "Número do Projeto", "Numero do Projeto", "Código", "Codigo"],
@@ -465,6 +471,148 @@ def listar_avaliacoes(request: Request, _: bool = Depends(auth)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao ler avaliações: {str(e)}")
 
+
+
+# 💰 TARIFAS — histórico anual lido da aba "Tarifa"
+_tarifas_cache: dict[str, Any] = {"data": None, "timestamp": 0.0}
+_TARIFAS_TTL_SECONDS = 3600  # 1h — tarifa muda 1x/ano
+
+
+def _parse_tarifa_valor(raw: Any) -> Optional[float]:
+    """Converte '  R$  1,02 ' → 1.02. Retorna None se não parsear."""
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    import re
+    s = re.sub(r"[^\d,.\-]", "", str(raw)).replace(",", ".")
+    try:
+        return float(s) if s else None
+    except ValueError:
+        return None
+
+
+@router.get(
+    "/tarifas",
+    summary="Histórico de tarifas de energia",
+    description="Retorna {ano: tarifa_R$_kWh} lido da aba 'Tarifa'. Usado no cálculo de Economia Estimada.",
+    tags=["Tarifas"],
+    operation_id="getTarifas",
+)
+@limiter.limit("30/minute")
+def listar_tarifas(request: Request, _: bool = Depends(auth)) -> dict:
+    agora = time.time()
+    if (
+        _tarifas_cache["data"] is None
+        or (agora - _tarifas_cache["timestamp"]) > _TARIFAS_TTL_SECONDS
+    ):
+        try:
+            credentials = service_account.Credentials.from_service_account_file(
+                settings.SERVICE_ACCOUNT_FILE, scopes=settings.SCOPES,
+            )
+            service = build("sheets", "v4", credentials=credentials)
+            result = service.spreadsheets().values().get(
+                spreadsheetId=settings.SPREADSHEET_ID, range="Tarifa!A1:B"
+            ).execute()
+            values = result.get("values", [])
+            if not values or len(values) < 2:
+                raise HTTPException(status_code=500, detail="Aba 'Tarifa' vazia ou sem dados")
+
+            tarifas: dict[str, float] = {}
+            # Primeira linha é cabeçalho; demais são (ano, valor)
+            for row in values[1:]:
+                if len(row) < 2:
+                    continue
+                ano_raw = str(row[0]).strip()
+                tarifa = _parse_tarifa_valor(row[1])
+                if not ano_raw or tarifa is None:
+                    continue
+                # ano pode vir como "2026" ou "2026.0"
+                try:
+                    ano = str(int(float(ano_raw)))
+                except ValueError:
+                    continue
+                tarifas[ano] = tarifa
+
+            _tarifas_cache["data"] = tarifas
+            _tarifas_cache["timestamp"] = agora
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Erro ao ler aba Tarifa: {e}")
+            raise HTTPException(status_code=500, detail=f"Erro ao ler tarifas: {str(e)}")
+
+    return {"tarifas": _tarifas_cache["data"]}
+
+
+# 👷 EQUIPE DE INSTALADORES — GET
+@router.get(
+    "/projeto/{numero}/equipe",
+    summary="Get Project Team",
+    description="Retorna {nome: bool} indicando quem está na equipe da obra.",
+    tags=["Projects"],
+    operation_id="getProjectTeam",
+)
+@limiter.limit("10/minute")
+def get_equipe(
+    numero: int = Path(..., description="Número do projeto", example=1044),
+    request: Request = Request,
+    _: bool = Depends(auth),
+) -> dict:
+    projetos = carregar_dados()
+    numero_str = str(numero).strip()
+    proj = next(
+        (p for p in projetos if obter_valor_canonico(p, "numero_projeto") == numero_str),
+        None,
+    )
+    if not proj:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    return {
+        nome: str(proj.get(f"Inst. {nome}", "")).strip().upper() == "TRUE"
+        for nome in INSTALADORES
+    }
+
+
+# 👷 EQUIPE DE INSTALADORES — PUT
+@router.put(
+    "/projeto/{numero}/equipe",
+    summary="Update Project Team",
+    description=(
+        "Recebe {nome: bool} e atualiza as colunas `Inst. *` correspondentes. "
+        "Apenas nomes presentes no body são atualizados (campos ausentes ficam inalterados)."
+    ),
+    tags=["Projects"],
+    operation_id="updateProjectTeam",
+)
+@limiter.limit("10/minute")
+def set_equipe(
+    numero: int,
+    equipe: dict,
+    request: Request,
+    _: bool = Depends(auth),
+):
+    from app.sheets import atualizar_projeto_sheet
+
+    novos = {}
+    for nome in INSTALADORES:
+        if nome in equipe:
+            novos[f"Inst. {nome}"] = "TRUE" if equipe[nome] else ""
+
+    if not novos:
+        raise HTTPException(
+            status_code=400, detail="Nenhum instalador válido informado"
+        )
+
+    success = atualizar_projeto_sheet(str(numero), novos)
+    if not success:
+        raise HTTPException(
+            status_code=404, detail="Projeto não encontrado ou erro ao atualizar"
+        )
+
+    limpar_cache()
+    return {"detail": "Equipe atualizada com sucesso", "atualizados": list(novos.keys())}
+
+
 # 🔴 FILTRAR POR STATUS
 @router.get(
     "/projetos/por-status",
@@ -489,3 +637,218 @@ def filtrar_por_status(
         status_filtro=status,
         projetos=projetos_filtrados,
     )
+
+
+# 🗺️ GOOGLE MAPS — DISTANCE MATRIX PROXY
+# Server-side proxy to Google Maps Distance Matrix API.
+# Distance Matrix doesn't support browser CORS, so the frontend can't call it directly in production.
+@router.get(
+    "/gmaps/distancematrix",
+    summary="Distance Matrix (Google Maps proxy)",
+    tags=["Google Maps"],
+    operation_id="gmapsDistanceMatrix",
+)
+@limiter.limit("60/minute")
+async def gmaps_distance_matrix(
+    request: Request,
+    origins: str = Query(..., description="Origem (endereço, lat,lng ou plus code)"),
+    destinations: str = Query(..., description="Destino (endereço ou lat,lng)"),
+    units: str = Query("metric", description="metric ou imperial"),
+    _: bool = Depends(auth),
+):
+    if not settings.GOOGLE_MAPS_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="GOOGLE_MAPS_API_KEY não configurada no servidor",
+        )
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                "https://maps.googleapis.com/maps/api/distancematrix/json",
+                params={
+                    "origins": origins,
+                    "destinations": destinations,
+                    "units": units,
+                    "key": settings.GOOGLE_MAPS_API_KEY,
+                },
+            )
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Timeout ao consultar Google Maps")
+    except httpx.HTTPError as e:
+        logger.error(f"Erro ao chamar Google Distance Matrix: {e}")
+        raise HTTPException(status_code=502, detail="Erro ao consultar Google Maps")
+
+
+# 🔑 ADMIN — ALTERAR SENHA DE USUÁRIO (Supabase)
+@router.put(
+    "/admin/usuarios/{uid}/senha",
+    summary="Admin: Change User Password",
+    tags=["Admin"],
+    operation_id="adminChangeUserPassword",
+)
+@limiter.limit("10/minute")
+async def admin_change_password(
+    uid: str,
+    body: dict,
+    request: Request,
+    _: bool = Depends(auth),
+):
+    import httpx as _httpx
+    supabase_url = settings.SUPABASE_URL
+    service_role_key = settings.SUPABASE_SERVICE_ROLE_KEY
+    if not supabase_url or not service_role_key:
+        raise HTTPException(status_code=503, detail="Supabase admin não configurado no servidor")
+
+    senha = body.get("senha", "").strip()
+    if not senha:
+        raise HTTPException(status_code=400, detail="Senha não informada")
+
+    url = f"{supabase_url}/auth/v1/admin/users/{uid}"
+    headers = {
+        "apikey": service_role_key,
+        "Authorization": f"Bearer {service_role_key}",
+        "Content-Type": "application/json",
+    }
+    try:
+        async with _httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.put(url, json={"password": senha}, headers=headers)
+            if resp.status_code >= 400:
+                body_err = resp.json() if resp.content else {}
+                raise HTTPException(
+                    status_code=resp.status_code,
+                    detail=body_err.get("message", f"Supabase error {resp.status_code}"),
+                )
+    except _httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Timeout ao chamar Supabase Admin API")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erro ao alterar senha: {str(e)}")
+
+    return {"detail": "Senha alterada com sucesso"}
+
+
+# 🔑 ADMIN — ATUALIZAR USUÁRIO COMPLETO (nome, email, area, senha)
+@router.put(
+    "/admin/usuarios/{uid}",
+    summary="Admin: Update User",
+    tags=["Admin"],
+    operation_id="adminUpdateUser",
+)
+@limiter.limit("10/minute")
+async def admin_update_user(
+    uid: str,
+    body: dict,
+    request: Request,
+    _: bool = Depends(auth),
+):
+    import httpx as _httpx
+    supabase_url = settings.SUPABASE_URL
+    service_role_key = settings.SUPABASE_SERVICE_ROLE_KEY
+    if not supabase_url or not service_role_key:
+        raise HTTPException(status_code=503, detail="Supabase admin não configurado")
+
+    _headers = {
+        "apikey": service_role_key,
+        "Authorization": f"Bearer {service_role_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        async with _httpx.AsyncClient(timeout=15.0) as client:
+            # 1. Update auth user (email and/or password)
+            auth_payload: dict = {}
+            if body.get("email"):
+                auth_payload["email"] = body["email"].strip()
+            if body.get("senha"):
+                auth_payload["password"] = body["senha"].strip()
+            if auth_payload:
+                resp = await client.put(
+                    f"{supabase_url}/auth/v1/admin/users/{uid}",
+                    json=auth_payload,
+                    headers=_headers,
+                )
+                if resp.status_code >= 400:
+                    err = resp.json() if resp.content else {}
+                    raise HTTPException(
+                        status_code=resp.status_code,
+                        detail=err.get("message", f"Supabase auth error {resp.status_code}"),
+                    )
+
+            # 2. Update profiles table
+            profile_payload: dict = {}
+            if "nome" in body:
+                profile_payload["nome"] = body["nome"].strip()
+            if "area" in body:
+                profile_payload["area"] = body["area"].strip()
+            if body.get("email"):
+                profile_payload["email"] = body["email"].strip()
+            if profile_payload:
+                resp = await client.patch(
+                    f"{supabase_url}/rest/v1/profiles?id=eq.{uid}",
+                    json=profile_payload,
+                    headers={**_headers, "Prefer": "return=minimal"},
+                )
+                if resp.status_code >= 400:
+                    err = resp.json() if resp.content else {}
+                    raise HTTPException(
+                        status_code=resp.status_code,
+                        detail=err.get("message", f"Supabase profiles error {resp.status_code}"),
+                    )
+    except _httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Timeout ao chamar Supabase")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erro ao atualizar usuário: {str(e)}")
+
+    return {"detail": "Usuário atualizado com sucesso"}
+
+
+# 🗑️ ADMIN — EXCLUIR USUÁRIO (Supabase)
+@router.delete(
+    "/admin/usuarios/{uid}",
+    summary="Admin: Delete User",
+    tags=["Admin"],
+    operation_id="adminDeleteUser",
+)
+@limiter.limit("10/minute")
+async def admin_delete_user(
+    uid: str,
+    request: Request,
+    _: bool = Depends(auth),
+):
+    import httpx as _httpx
+    supabase_url = settings.SUPABASE_URL
+    service_role_key = settings.SUPABASE_SERVICE_ROLE_KEY
+    if not supabase_url or not service_role_key:
+        raise HTTPException(status_code=503, detail="Supabase admin não configurado")
+
+    _headers = {
+        "apikey": service_role_key,
+        "Authorization": f"Bearer {service_role_key}",
+    }
+
+    try:
+        async with _httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.delete(
+                f"{supabase_url}/auth/v1/admin/users/{uid}",
+                headers=_headers,
+            )
+            if resp.status_code >= 400:
+                err = resp.json() if resp.content else {}
+                raise HTTPException(
+                    status_code=resp.status_code,
+                    detail=err.get("message", f"Supabase error {resp.status_code}"),
+                )
+    except _httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Timeout ao chamar Supabase")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erro ao excluir usuário: {str(e)}")
+
+    return {"detail": "Usuário excluído com sucesso"}
